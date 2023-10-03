@@ -1,0 +1,77 @@
+# Change LDAP URL to use two LDAP servers
+su - zimbra -c "zmlocalconfig -e ldap_url='ldap://ldapdrc1.bri.co.id:389 ldap://ldapdrc2.bri.co.id:389'"
+if [ $? -eq 0 ]; then
+    echo "LDAP URL successfully changed."
+else
+    echo "Failed to change LDAP URL."
+fi
+
+# Change LDAP master URL to use two LDAP servers
+su - zimbra -c "zmlocalconfig -e ldap_master_url='ldap://ldapdrc1.bri.co.id:389 ldap://ldapdrc2.bri.co.id:389'"
+if [ $? -eq 0 ]; then
+    echo "LDAP master URL successfully changed."
+else
+    echo "Failed to change LDAP master URL."
+fi
+
+
+# Set the path to the new hosts file
+new_hosts_file="/etc/hosts.failover"
+
+# Backup the existing hosts file
+sudo cp /etc/hosts /etc/hosts.bak
+
+# Replace the existing hosts file with the new one
+sudo cp "$new_hosts_file" /etc/hosts
+
+# Verify the changes
+if cmp -s /etc/hosts "$new_hosts_file"; then
+    echo "New hosts file successfully inputted."
+else
+    echo "Failed to input new hosts file."
+fi
+
+# Restart all Zimbra services
+su - zimbra -c "zmcontrol restart"
+if [ $? -eq 0 ]; then
+    echo "All Zimbra services successfully restarted."
+else
+    echo "Failed to restart all Zimbra services."
+fi
+
+# Verify the restart
+if su - zimbra -c "zmcontrol status" | grep -q "Running"; then
+    echo "All Zimbra services are running."
+else
+    echo "Some Zimbra services are not running."
+fi
+
+# Declare new SMTP hostnames
+new_smtphostname1='mtadrc1.bri.co.id'
+new_smtphostname2='mtadrc2.bri.co.id'
+
+# Set the full path of zmhostname command
+zmhostname_path='/opt/zimbra/bin/zmhostname'
+
+# Set the new zimbraSmtpHostname value using the first variable
+su - zimbra -c "zmprov ms $($zmhostname_path) zimbraSmtpHostname '${new_smtphostname1}'"
+if [ $? -eq 0 ]; then
+    echo "zimbraSmtpHostname successfully set to ${new_smtphostname1}."
+else
+    echo "Failed to set zimbraSmtpHostname to ${new_smtphostname1}."
+fi
+
+# Add more servers to zimbraSmtpHostname using the +zimbrasmtphostname command
+su - zimbra -c "zmprov ms $($zmhostname_path) +zimbrasmtphostname '${new_smtphostname2}'"
+if [ $? -eq 0 ]; then
+    echo "zimbraSmtpHostname successfully added ${new_smtphostname2}."
+else
+    echo "Failed to add zimbraSmtpHostname ${new_smtphostname2}."
+fi
+
+# Verify the changes using grep -E and pipeline
+if su - zimbra -c "zmprov gs $($zmhostname_path) zimbraSmtpHostname" | grep -E "${new_smtphostname1}|${new_smtphostname2}"; then
+    echo "zimbraSmtpHostname successfully changed and added."
+else
+    echo "Failed to change and add zimbraSmtpHostname."
+fi
